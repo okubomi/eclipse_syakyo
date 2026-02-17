@@ -1,0 +1,21 @@
+/bin/
+/.settings/
+.classpath
+.project
+
+# OS系
+.DS_Store
+Thumbs.db
+
+# Java
+*.class
+
+# Eclipse workspace metadata
+*.launch
+
+# Maven
+target/
+
+# Gradle
+.gradle/
+build/
