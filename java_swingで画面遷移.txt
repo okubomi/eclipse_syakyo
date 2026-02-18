@@ -1,0 +1,562 @@
+`UserSession`クラスに辞書データ（`Map`）を持たせることで、ユーザー名だけでなく、ID、権限、設定値など、複数のデータを「キー：値」のペアで一括管理できるようになります。
+
+Javaで辞書データを扱うには、`java.util.HashMap` を使用するのが一般的です。
+
+---
+
+### カスタマイズ後の `UserSession` クラス
+
+```java
+package gamenIdouUserNameDisp;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 全画面で共有するデータクラス（辞書データ対応版）
+ */
+public class UserSession {
+    // ユーザー名用のフィールド
+    private String userName = "";
+    
+    // 各種データを保持する辞書（Map）
+    // Key: String, Value: Object（文字列以外も入れられるように）
+    private Map<String, Object> userData = new HashMap<>();
+
+    // --- ユーザー名用のメソッド ---
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getUserName() {
+        return this.userName;
+    }
+
+    // --- 辞書データ用のメソッド ---
+
+    /**
+     * データをセットする（例: putData("role", "admin");）
+     */
+    public void putData(String key, Object value) {
+        this.userData.put(key, value);
+    }
+
+    /**
+     * データを取得する（例: getData("role");）
+     */
+    public Object getData(String key) {
+        return this.userData.get(key);
+    }
+
+    /**
+     * 辞書全体をクリアする（ログアウト時などに使用）
+     */
+    public void clearSession() {
+        this.userName = "";
+        this.userData.clear();
+    }
+}
+
+```
+
+---
+
+### 具体的な使い方のイメージ
+
+各パネル（LoginPanelなど）で以下のようにデータをセットしたり、取り出したりできます。
+
+* **セットするとき（LoginPanelなど）**
+```java
+session.setUserName("田中太郎");
+session.putData("userId", "U12345");
+session.putData("lastLogin", "2026-02-18");
+
+```
+
+
+* **取り出すとき（HomePanelなど）**
+```java
+String id = (String) session.getData("userId"); // Objectで返るのでキャストが必要
+String date = (String) session.getData("lastLogin");
+
+```
+----
+
+
+Java Swingで「入力 → 確認・登録 → 完了」という3ステップの流れを作る場合、**「CardLayoutによる画面切り替え」**が最も一般的で、ユーザー体験（UX）もスムーズになります。
+
+それぞれの設計パターンのメリット・デメリットを整理しましたので、状況に合わせて選んでみてください。
+
+---
+
+### 1. 推奨：CardLayoutによる画面切り替え
+
+ウェブサイトの申し込みフォームのような「一連の流れ」を作るのに最適な方法です。
+
+* **メリット:**
+* 画面サイズが一定に保たれ、ユーザーが集中しやすい。
+* `UserSession`（共有データ）との相性が抜群に良く、前の画面に戻って修正する処理も作りやすい。
+
+
+* **デメリット:**
+* `MainFrame` に全てのパネルを登録するため、少しコードの構成が複雑になる。
+
+
+
+---
+
+### 2. ダイアログ（JDialog）による実装
+
+「メインの管理画面」が別にあり、一時的にデータを追加するような場合に適しています。
+
+* **メリット:**
+* 「今は入力をしている」ということが視覚的に強調される（モーダルダイアログ）。
+* 既存の画面を壊さずに機能を追加できる。
+
+
+* **デメリット:**
+* 「入力用」「確認用」「完了用」と、3つもダイアログが連続してポップアップすると、ユーザーは煩わしさを感じやすい。
+
+
+
+---
+
+### どちらを選ぶべき？
+
+| 目的 | 推奨パターン |
+| --- | --- |
+| **アプリのメイン機能がその入力作業である** | **CardLayout（画面切り替え）** |
+| **一覧画面があり、時々「追加」ボタンで入れたい** | **ダイアログ** |
+
+**訓練校の卒業制作や就職活動用のポートフォリオ**であれば、**CardLayout** を使った「ウィザード形式（次へ、次へで進む形式）」の方が、**「複雑なレイアウト管理ができる」**という技術アピールになるため、圧倒的におすすめです。
+
+---
+
+### CardLayoutでの3画面構成の実装イメージ
+
+以前作成した `MainFrame` の `container` に、3つのパネルを追加するだけです。
+
+```java
+// MainFrameのコンストラクタ内
+InputPanel input = new InputPanel(this, session);
+ConfirmPanel confirm = new ConfirmPanel(this, session);
+FinishPanel finish = new FinishPanel(this, session);
+
+container.add(input, "Input");     // STEP 1
+container.add(confirm, "Confirm"); // STEP 2
+container.add(finish, "Finish");   // STEP 3
+
+```
+
+**画面遷移のロジック:**
+
+1. **InputPanel**: 「確認へ」ボタン → `session.putData` してから `showPage("Confirm")`
+2. **ConfirmPanel**: 「登録」ボタン → DB保存処理をして `showPage("Finish")`
+* 「戻る」ボタン → `showPage("Input")`
+
+
+3. **FinishPanel**: 「TOPへ」ボタン → `session.clearSession` してから `showPage("Input")`
+
+---
+
+### 💡 さらにプロっぽく見せるコツ
+
+`ConfirmPanel`（確認画面）を表示する際、先ほどの `addComponentListener` の `componentShown` を使って、**「入力画面でMapに格納した値を一覧表示する」** という処理を入れてみてください。
+
+「前の画面で入れたデータが正しく反映されている」という挙動は、ウェブアプリケーション開発（Java Servlet/JSPやSpring Boot）の基本と同じ考え方（リクエスト/セッション管理）なので、未経験からのエンジニア就職において「基礎ができている」と高く評価されます。
+
+まずは、確認画面（ConfirmPanel）を追加して、`Map` のデータを表示させるところから始めてみてください。
+
+---
+もちろん可能です！むしろ、実務や中〜大規模な開発では、各ステップを別クラスに分けるのが**正解**です。
+
+1つのファイルに全て書き込むとコードが長くなりすぎて、どこを修正すべきか分からなくなってしまいます。各画面（JPanel）を独立したファイルに分けることで、**「再利用性」**と**「保守性」**が高まります。
+
+以下に、ステップ1（入力画面）を `InputPanel.java` という別ファイルに切り出す実装例を示します。
+
+---
+
+### 1. 別ファイルに切り出した `InputPanel.java`
+
+ポイントは、親パネル（`RegistrationFlowPanel`）を操作するための参照をコンストラクタで受け取ることです。
+
+```java
+package gamenIdouUserNameDisp;
+
+import java.awt.Color;
+import java.awt.GridBagLayout;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+
+/**
+ * STEP1: 入力画面を独立させたクラス
+ */
+public class InputPanel extends JPanel {
+    private JTextField nameField = new JTextField(15);
+    private JButton toConfirmBtn = new JButton("確認画面へ");
+
+    // 親のフローパネルとセッションを受け取る
+    public InputPanel(RegistrationFlowPanel parent, UserSession session) {
+        setLayout(new GridBagLayout());
+        setBackground(new Color(230, 240, 255)); // 薄い青
+
+        add(new JLabel("名前入力: "));
+        add(nameField);
+        add(toConfirmBtn);
+
+        // ボタンが押されたら親のメソッドを呼んで画面遷移させる
+        toConfirmBtn.addActionListener(e -> {
+            session.setUserName(nameField.getText());
+            // 親パネルに定義する画面切り替えメソッドを呼び出す
+            parent.showConfirmPage();
+        });
+    }
+
+    // デバッグ用に名前を取得できるようにしておく
+    public String getInputName() {
+        return nameField.getText();
+    }
+}
+
+```
+
+---
+
+### 2. 親パネル `RegistrationFlowPanel.java` の修正
+
+各ステップのパネルをインスタンス化して追加します。
+
+```java
+class RegistrationFlowPanel extends JPanel {
+    private CardLayout internalLayout = new CardLayout();
+    private UserSession session;
+
+    public RegistrationFlowPanel(UserSession session) {
+        this.session = session;
+        setLayout(internalLayout);
+
+        // 別ファイルで作成したクラスを呼び出す
+        InputPanel step1Input = new InputPanel(this, session);
+        // ※同様にConfirmPanel, FinishPanelも別クラス化できます
+        
+        add(step1Input, "Input");
+        // ... 他のパネルもadd ...
+    }
+
+    // 子パネル（InputPanel）から呼ばれる遷移用メソッド
+    public void showConfirmPage() {
+        // 次の画面に必要な処理（確認ラベルの更新など）をしてから遷移
+        internalLayout.show(this, "Confirm");
+    }
+}
+
+```
+
+---
+
+実務的なSwingアプリケーションの開発において、これだけ画面数（機能）が増えてくると、**「どの画面がどの階層に属するか」を整理する実装設計図**が非常に重要になります。
+
+Javaのクラス設計として、「全体の枠組み」「機能のグループ」「具体的な画面」の3層で構成するのが、保守性が高く最も賢い設計です。
+
+---
+
+### 1. 画面（JPanel）クラス設計一覧
+
+以下のようなクラス構成でファイルを作成すると、管理が非常に楽になります。
+
+| 階層 | クラス名 | 役割・内容 |
+| --- | --- | --- |
+| **ベース** | `MainFrame` | `JFrame`を継承。左メニューと右メインエリアの土台。 |
+| **コンテナ** | `MainContentArea` | `CardLayout`を持つ。以下の各機能パネルを切り替える箱。 |
+| **ホーム** | `HomePanel` | 起動時に表示されるダッシュボード。 |
+| **商品管理系** | `ProductSectionPanel` | **内部にCardLayoutを持つ。** 検索と登録を切り替える。 |
+| (子画面) | `ProductSearchPanel` | 商品一覧・検索フォーム。 |
+| (子画面) | `ProductRegisterPanel` | 商品登録フォーム（＋確認・完了の内部遷移）。 |
+| **売上管理系** | `SalesSectionPanel` | **内部にCardLayoutを持つ。** 検索と統計を切り替える。 |
+| (子画面) | `SalesSearchPanel` | 売上履歴の検索・表示。 |
+| (子画面) | `SalesStatisticsPanel` | 売上統計（グラフや集計データ）の表示。 |
+
+---
+
+### 2. 実装の推奨設計：階層型CardLayout
+
+左側のナビゲーションメニューで「商品管理」を押したとき、右側にはまず「商品管理のポータル（または検索画面）」が出ますが、その中でさらに「検索」と「登録」を切り替える必要があります。
+
+#### 設計のポイント：
+
+* **「SectionPanel」の導入:**
+`ProductSectionPanel` という「商品管理の親玉」を作ります。このパネル自体が `CardLayout` を持ち、その中で「検索」と「登録」のパネルを管理します。
+* **通信のルール:**
+左メニューボタンは `MainFrame` の `CardLayout` を操作します。
+「商品管理」の中での「検索⇔登録」の切り替えは、`ProductSectionPanel` 内のボタン（またはメソッド）で行います。
+
+---
+
+### 3. 具体的なクラス間の連携イメージ
+
+```text
+MainFrame (BorderLayout)
+ ├── West: NavPanel (Home, 商品, 売上 ボタン)
+ └── Center: MainContentArea (CardLayout)
+      ├── HomePanel
+      ├── ProductSectionPanel (★内部にCardLayout)
+      │    ├── ProductSearchPanel
+      │    └── ProductRegisterFlow (★さらに入力・確認・完了のCardLayout)
+      └── SalesSectionPanel (★内部にCardLayout)
+           ├── SalesSearchPanel
+           └── SalesStatisticsPanel
+
+```
+
+---
+
+### 4. 未経験エンジニアとして意識すべき点
+
+この設計で進めると、面接で**「なぜこのようにクラスを分けたのですか？」**と聞かれた際に、以下のように答えられます。
+
+> 「各機能（商品・売上）を独立したセクションパネルとしてカプセル化することで、商品管理の改修が売上管理に影響しないようにしました。また、階層構造にすることで、Webサイトのディレクトリ構造（/product/search など）と同じような直感的な管理を目指しました。」
+
+これはまさに、訓練校で学ばれた **ウェブアプリケーションのルーティング** の考え方をデスクトップアプリに転用した形です。
+
+まずは、この構成案に基づいて空のクラス（`JPanel`を継承しただけのファイル）を全て作成し、`MainFrame` でそれらを紐付けるところから始めてみてはいかがでしょうか？
+
+もしよろしければ、この構成に合わせた `MainFrame` の初期セットアップ用のコードを提示しましょうか？
+
+---
+
+「商品管理セクション」の担当者向けに、**「他の画面がなくても、このクラス単体で動作確認（単体テスト）ができる」**設計のサンプルコードを作成しました。
+
+このコードの特徴は、`main`メソッド内にテスト用の土台（`JFrame`）を用意し、さらにセクション内の「検索」と「登録」を切り替えるための**サブナビゲーション**を上部に配置している点です。
+
+---
+
+### ProductSectionPanel.java
+
+```java
+package gamenIdouUserNameDisp;
+
+import java.awt.*;
+import javax.swing.*;
+
+/**
+ * 商品管理セクションの親パネル。
+ * 内部に「商品検索」と「商品登録」の2つのカードを持つ。
+ */
+public class ProductSectionPanel extends JPanel {
+    private CardLayout sectionLayout = new CardLayout();
+    private JPanel cardContainer = new JPanel(sectionLayout);
+    private UserSession session;
+
+    public ProductSectionPanel(UserSession session) {
+        this.session = session;
+        setLayout(new BorderLayout());
+
+        // --- 1. セクション内サブナビゲーション (上部) ---
+        JPanel subNav = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        subNav.setBackground(new Color(100, 100, 100));
+        JButton btnSearch = new JButton("商品検索へ");
+        JButton btnRegister = new JButton("新規登録へ");
+        subNav.add(btnSearch);
+        subNav.add(btnRegister);
+        add(subNav, BorderLayout.NORTH);
+
+        // --- 2. カードコンテナに各画面を登録 ---
+        // ※実際にはこれらも別ファイル(ProductSearchPanel等)に切り出す
+        cardContainer.add(new ProductSearchPanel(session), "Search");
+        cardContainer.add(new ProductRegisterFlow(session), "RegisterFlow");
+        add(cardContainer, BorderLayout.CENTER);
+
+        // --- 3. 切り替えイベント ---
+        btnSearch.addActionListener(e -> sectionLayout.show(cardContainer, "Search"));
+        btnRegister.addActionListener(e -> sectionLayout.show(cardContainer, "RegisterFlow"));
+    }
+
+    /**
+     * 【単体テスト用メインメソッド】
+     * 開発担当者は、このファイルを右クリック > Run As > Java Application で
+     * MainFrameがなくてもこの画面だけで動作確認が可能です。
+     */
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("ProductSectionPanel 単体テスト");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setSize(600, 400);
+
+            // テスト用の共有データ
+            UserSession testSession = new UserSession();
+            testSession.setUserName("デバッグ担当者");
+
+            // テスト対象パネルをセット
+            frame.add(new ProductSectionPanel(testSession));
+            frame.setVisible(true);
+        });
+    }
+}
+
+// --- 以下、スタブ（仮）クラス ---
+// ※本来は別ファイルで作成しますが、動作確認用にここに記述します
+
+class ProductSearchPanel extends JPanel {
+    public ProductSearchPanel(UserSession session) {
+        setBackground(Color.WHITE);
+        add(new JLabel("商品検索画面（ここに検索フォームやJTableを実装）"));
+    }
+}
+
+class ProductRegisterFlow extends JPanel {
+    public ProductRegisterFlow(UserSession session) {
+        setBackground(new Color(245, 245, 245));
+        add(new JLabel("商品登録フロー（ここにCardLayoutでの入力・確認・完了を実装）"));
+    }
+}
+
+```
+
+---
+
+### 実装のポイント（担当者への引き継ぎ事項）
+
+1. **独立した動作環境**:
+`main`メソッドがあるおかげで、全体の完成を待たずに「商品管理」のロジックを開発・デバッグできます。これは実務の「並行開発」で必須のスキルです。
+2. **階層構造の理解**:
+* **外側**: `MainFrame` (商品管理か売上管理かを選択)
+* **内側(このクラス)**: `ProductSectionPanel` (検索か登録かを選択)
+* **さらに内側**: `ProductRegisterFlow` (入力か確認か完了かを選択)
+このように役割を分けることで、1つのクラスが巨大化するのを防いでいます。
+
+
+3. **セッションの共有**:
+コンストラクタで `UserSession` を受け取っているため、誰がログインしているか、どの商品を選択中かといった情報をセクション全体で共有できます。
+
+### 開発担当者への次の指示案
+
+「まずはこの `ProductSectionPanel` を動かしてみて、上部のボタンで画面が切り替わることを確認してください。確認できたら、`ProductSearchPanel` 内に検索用の `JTextField` と、結果表示用の `JTable` を追加していきましょうか？」
+
+このように、ステップを細かく分けて指示を出すと、未経験者同士のチーム開発でも混乱が少なくなりますよ！
+---
+
+商品管理セクションをさらに細分化し、**「検索画面（Search）」**と**「登録フロー（RegisterFlow）」**を完全に別ファイルとして切り出したサンプルコードを作成します。
+
+実務レベルの設計では、このようにファイルを分けることで、複数人での同時開発がしやすくなります。
+
+---
+
+### 1. ProductSearchPanel.java（検索画面担当）
+
+検索条件を入力し、結果を表示する「静的な1画面」を担当します。
+
+```java
+package gamenIdouUserNameDisp;
+
+import java.awt.*;
+import javax.swing.*;
+
+/**
+ * 商品検索画面クラス
+ */
+public class ProductSearchPanel extends JPanel {
+    
+    public ProductSearchPanel(UserSession session) {
+        // 背景色を変えて、画面が切り替わったことを分かりやすくする
+        setBackground(Color.WHITE);
+        setLayout(new BorderLayout());
+
+        // 上部：検索入力エリア
+        JPanel searchHeader = new JPanel();
+        searchHeader.add(new JLabel("商品名:"));
+        searchHeader.add(new JTextField(15));
+        searchHeader.add(new JButton("検索"));
+        add(searchHeader, BorderLayout.NORTH);
+
+        // 中央：結果表示エリア（スタブ）
+        JLabel dummyTable = new JLabel("ここに検索結果のJTableが表示されます", SwingConstants.CENTER);
+        add(dummyTable, BorderLayout.CENTER);
+
+        // フッター：ログイン情報
+        add(new JLabel("操作担当: " + session.getUserName()), BorderLayout.SOUTH);
+    }
+}
+
+```
+
+---
+
+### 2. ProductRegisterFlow.java（登録フロー担当）
+
+このクラス自身がさらに `CardLayout` を持ち、「入力→確認→完了」の**動的な遷移**を担当します。
+
+```java
+package gamenIdouUserNameDisp;
+
+import java.awt.*;
+import javax.swing.*;
+
+/**
+ * 商品登録の一連の流れ（ウィザード）を管理するクラス
+ */
+public class ProductRegisterFlow extends JPanel {
+    private CardLayout internalLayout = new CardLayout();
+    
+    public ProductRegisterFlow(UserSession session) {
+        setLayout(internalLayout);
+
+        // --- STEP 1: 入力パネル ---
+        JPanel inputStep = new JPanel(new GridBagLayout());
+        inputStep.setBackground(new Color(240, 255, 240)); // 薄緑
+        JButton toConfirmBtn = new JButton("確認へ");
+        inputStep.add(new JLabel("新規商品名を入力: "));
+        inputStep.add(new JTextField(10));
+        inputStep.add(toConfirmBtn);
+
+        // --- STEP 2: 確認パネル ---
+        JPanel confirmStep = new JPanel(new GridBagLayout());
+        confirmStep.setBackground(new Color(255, 245, 230)); // 暖色
+        JButton toFinishBtn = new JButton("登録確定");
+        JButton backBtn = new JButton("戻る");
+        confirmStep.add(new JLabel("この内容で登録しますか？"));
+        confirmStep.add(backBtn);
+        confirmStep.add(toFinishBtn);
+
+        // --- STEP 3: 完了パネル ---
+        JPanel finishStep = new JPanel(new GridBagLayout());
+        finishStep.add(new JLabel("登録が完了しました！"));
+        JButton resetBtn = new JButton("続けて登録する");
+        finishStep.add(resetBtn);
+
+        // カード登録
+        add(inputStep, "Step1");
+        add(confirmStep, "Step2");
+        add(finishStep, "Step3");
+
+        // --- 画面遷移ロジック ---
+        toConfirmBtn.addActionListener(e -> internalLayout.show(this, "Step2"));
+        backBtn.addActionListener(e -> internalLayout.show(this, "Step1"));
+        toFinishBtn.addActionListener(e -> internalLayout.show(this, "Step3"));
+        resetBtn.addActionListener(e -> internalLayout.show(this, "Step1"));
+    }
+}
+
+```
+
+---
+
+### 3. 親クラスでの呼び出し（ProductSectionPanel.java）
+
+切り出したクラスを呼び出す側は、非常にスッキリします。
+
+```java
+// ProductSectionPanel内の「カードコンテナに各画面を登録」部分
+cardContainer.add(new ProductSearchPanel(session), "Search");
+cardContainer.add(new ProductRegisterFlow(session), "RegisterFlow");
+
+```
+
+### 💡 この設計のポイント（エンジニアの視点）
+
+* **役割の分離 (Separation of Concerns):** 「検索ロジック」を直したいときは `ProductSearchPanel` だけを、「登録の流れ（ステップ）」を直したいときは `ProductRegisterFlow` だけを修正すればよいため、ミスが減ります。
+* **ネストされたレイアウト:**
+`MainFrame` ＞ `ProductSectionPanel` ＞ `ProductRegisterFlow` と、カードレイアウトの中にさらにカードレイアウトを入れる構造は、複雑な業務アプリを作る際によく使われる**黄金パターン**です。
+
+これで各画面の担当者が独立して作業できるようになりました。次は、`ProductSearchPanel` に実際のデータを表示するための `JTable` の使いかたについて解説しましょうか？
